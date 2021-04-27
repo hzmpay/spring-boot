@@ -622,7 +622,7 @@
       "name": "spring.data.jpa.repositories.bootstrap-mode",
       "type": "org.springframework.data.repository.config.BootstrapMode",
       "description": "Bootstrap mode for JPA repositories.",
-      "defaultValue": "deferred"
+      "defaultValue": "default"
     },
     {
       "name": "spring.data.jpa.repositories.enabled",
@@ -686,7 +686,11 @@
       "name": "spring.data.solr.repositories.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether to enable Solr repositories.",
-      "defaultValue": true
+      "defaultValue": true,
+      "deprecation": {
+        "reason": "Spring Data Solr is deprecated.",
+        "level": "warning"
+      }
     },
     {
       "name": "spring.datasource.initialization-mode",

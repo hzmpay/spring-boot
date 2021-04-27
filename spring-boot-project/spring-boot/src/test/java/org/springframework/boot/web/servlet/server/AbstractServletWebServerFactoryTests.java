@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2021 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package org.springframework.boot.web.servlet.server;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
@@ -126,6 +125,7 @@ import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.boot.web.servlet.server.Session.SessionTrackingMode;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -250,7 +250,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 		factory.setPort(-1);
 		this.webServer = factory.getWebServer(exampleServletRegistration());
 		this.webServer.start();
-		assertThat(this.webServer.getPort()).isLessThan(0); // Jetty is -2
+		assertThat(this.webServer.getPort()).isEqualTo(-1);
 	}
 
 	@Test
@@ -298,6 +298,16 @@ public abstract class AbstractServletWebServerFactoryTests {
 		assertThat(servlet.getInitCount()).isEqualTo(0);
 		this.webServer.start();
 		assertThat(servlet.getInitCount()).isEqualTo(1);
+	}
+
+	@Test
+	void portIsMinusOneWhenConnectionIsClosed() {
+		AbstractServletWebServerFactory factory = getFactory();
+		this.webServer = factory.getWebServer();
+		this.webServer.start();
+		assertThat(this.webServer.getPort()).isGreaterThan(0);
+		this.webServer.stop();
+		assertThat(this.webServer.getPort()).isEqualTo(-1);
 	}
 
 	@Test
@@ -532,7 +542,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 		this.webServer = factory.getWebServer();
 		this.webServer.start();
 		KeyStore keyStore = KeyStore.getInstance("pkcs12");
-		keyStore.load(new FileInputStream(new File("src/test/resources/test.p12")), "secret".toCharArray());
+		loadStore(keyStore, new FileSystemResource("src/test/resources/test.p12"));
 		SSLConnectionSocketFactory socketFactory = new SSLConnectionSocketFactory(
 				new SSLContextBuilder().loadTrustMaterial(null, new TrustSelfSignedStrategy())
 						.loadKeyMaterial(keyStore, "secret".toCharArray()).build());
@@ -549,7 +559,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 		this.webServer = factory.getWebServer();
 		this.webServer.start();
 		KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-		keyStore.load(new FileInputStream(new File("src/test/resources/test.jks")), "secret".toCharArray());
+		loadStore(keyStore, new FileSystemResource("src/test/resources/test.jks"));
 		SSLConnectionSocketFactory socketFactory = new SSLConnectionSocketFactory(
 				new SSLContextBuilder().loadTrustMaterial(null, new TrustSelfSignedStrategy())
 						.loadKeyMaterial(keyStore, "password".toCharArray()).build());
@@ -582,7 +592,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 		this.webServer = factory.getWebServer();
 		this.webServer.start();
 		KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-		keyStore.load(new FileInputStream(new File("src/test/resources/test.jks")), "secret".toCharArray());
+		loadStore(keyStore, new FileSystemResource("src/test/resources/test.jks"));
 		SSLConnectionSocketFactory socketFactory = new SSLConnectionSocketFactory(
 				new SSLContextBuilder().loadTrustMaterial(null, new TrustSelfSignedStrategy())
 						.loadKeyMaterial(keyStore, "password".toCharArray()).build());
@@ -620,7 +630,7 @@ public abstract class AbstractServletWebServerFactoryTests {
 		this.webServer = factory.getWebServer();
 		this.webServer.start();
 		KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-		keyStore.load(new FileInputStream(new File("src/test/resources/test.jks")), "secret".toCharArray());
+		loadStore(keyStore, new FileSystemResource("src/test/resources/test.jks"));
 		SSLConnectionSocketFactory socketFactory = new SSLConnectionSocketFactory(
 				new SSLContextBuilder().loadTrustMaterial(null, new TrustSelfSignedStrategy())
 						.loadKeyMaterial(keyStore, "password".toCharArray()).build());
@@ -1344,9 +1354,14 @@ public abstract class AbstractServletWebServerFactoryTests {
 	private KeyStore loadStore() throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException {
 		KeyStore keyStore = KeyStore.getInstance("JKS");
 		Resource resource = new ClassPathResource("test.jks");
-		try (InputStream inputStream = resource.getInputStream()) {
-			keyStore.load(inputStream, "secret".toCharArray());
-			return keyStore;
+		loadStore(keyStore, resource);
+		return keyStore;
+	}
+
+	private void loadStore(KeyStore keyStore, Resource resource)
+			throws IOException, NoSuchAlgorithmException, CertificateException {
+		try (InputStream stream = resource.getInputStream()) {
+			keyStore.load(stream, "secret".toCharArray());
 		}
 	}
 

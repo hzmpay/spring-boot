@@ -47,6 +47,7 @@ This will also turn off logging of the application's active profiles.
 TIP: To add additional logging during startup, you can override `logStartupInfo(boolean)` in a subclass of `SpringApplication`.
 
 
+
 [[boot-features-startup-failure]]
 === Startup Failure
 If your application fails to start, registered `FailureAnalyzers` get a chance to provide a dedicated error message and a concrete action to fix the problem.
@@ -149,6 +150,15 @@ Use the `org.springframework.boot.Banner` interface and implement your own `prin
 You can also use the configprop:spring.main.banner-mode[] property to determine if the banner has to be printed on `System.out` (`console`), sent to the configured logger (`log`), or not produced at all (`off`).
 
 The printed banner is registered as a singleton bean under the following name: `springBootBanner`.
+
+[NOTE]
+====
+The `${application.version}` and `${application.formatted-version}` properties are only available if you are using Spring Boot launchers.
+The values won't be resolved if you are running an unpacked jar and starting it with `java -cp <classpath> <mainclass>`.
+
+This is why we recommend that you always use launch unpacked jars using `java org.springframework.boot.loader.JarLauncher`.
+This will initialize the `application.*` banner variables before building the classpath and launching your app.
+====
 
 
 
@@ -496,6 +506,10 @@ On your application classpath (for example, inside your jar) you can have an `ap
 When running in a new environment, an `application.properties` file can be provided outside of your jar that overrides the `name`.
 For one-off testing, you can launch with a specific command line switch (for example, `java -jar app.jar --name="Spring"`).
 
+TIP: The `env` and `configprops` endpoints can be useful in determining why a property has a particular value.
+You can use these two endpoints to diagnose unexpected property values.
+See the "<<production-ready-features.adoc#production-ready-endpoints, Production ready features>>" section for details.
+
 Spring Boot also supports wildcard locations when loading configuration files.
 By default, a wildcard location of `config/*/` outside of your jar is supported.
 Wildcard locations are also supported when specifying `spring.config.additional-location` and `spring.config.location`.
@@ -541,7 +555,6 @@ You can also supply the JSON as a JNDI variable, as follows: `java:comp/env/spri
 
 NOTE: Although `null` values from the JSON will be added to the resulting property source, the `PropertySourcesPropertyResolver` treats `null` properties as missing values.
 This means that the JSON cannot override properties from lower order property sources with a `null` value.
-
 
 
 
@@ -1265,23 +1278,29 @@ TIP: We recommend that, when possible, properties are stored in lower-case kebab
 
 [[boot-features-external-config-relaxed-binding-maps]]
 ===== Binding Maps
-When binding to `Map` properties, if the `key` contains anything other than lowercase alpha-numeric characters or `-`, you need to use the bracket notation so that the original value is preserved.
-If the key is not surrounded by `[]`, any characters that are not alpha-numeric or `-` are removed.
-For example, consider binding the following properties to a `Map`:
+When binding to `Map` properties you may need to use a special bracket notation so that the original `key` value is preserved.
+If the key is not surrounded by `[]`, any characters that are not alpha-numeric, `-` or `.` are removed.
+
+For example, consider binding the following properties to a `Map<String,String>`:
 
 [source,yaml,indent=0]
 ----
 	acme:
 	  map:
-	    "[/key1]": value1
-	    "[/key2]": value2
-	    /key3: value3
+	    "[/key1]": "value1"
+	    "[/key2]": "value2"
+	    "/key3": "value3"
 
 ----
 
-The properties above will bind to a `Map` with `/key1`, `/key2` and `key3` as the keys in the map.
-
 NOTE: For YAML files, the brackets need to be surrounded by quotes for the keys to be parsed properly.
+
+The properties above will bind to a `Map` with `/key1`, `/key2` and `key3` as the keys in the map.
+The slash has been removed from `key3` because it wasn't surrounded by square brackets.
+
+You may also occasionally need to use the bracket notation if your `key` contains a `.` and you are binding to non-scalar value.
+For example, binding `a.b=c` to `Map<String, Object>` will return a Map with the entry `{"a"={"b"="c"}}` where as `[a.b]=c` will return a Map with the entry `{"a.b"="c"}`.
+
 
 
 [[boot-features-external-config-relaxed-binding-from-environment-variables]]
@@ -1612,7 +1631,9 @@ If you used `@Value("{demo.itemPrice}")` instead, `demo.item-price` and `DEMO_IT
 If you define a set of configuration keys for your own components, we recommend you group them in a POJO annotated with `@ConfigurationProperties`.
 Doing so will provide you with structured, type-safe object that you can inject into your own beans.
 
-While you can write a `SpEL` expression in `@Value`, such expressions are not processed from <<boot-features-external-config-application-property-files,application property files>>.
+`SpEL` expressions from  <<boot-features-external-config-application-property-files,application property files>> are not processed at time of parsing these files and populating the environment.
+However, it is possible to write a `SpEL` expression in `@Value`.
+If the value of a property from an application property file is a `SpEL` expression, it will be evaluated when consumed via `@Value`.
 
 
 
@@ -1705,6 +1726,7 @@ Generally, you do not need to change your logging dependencies and the Spring Bo
 
 TIP: When you deploy your application to a servlet container or application server, logging performed via the Java Util Logging API is not routed into your application's logs.
 This prevents logging performed by the container or other applications that have been deployed to it from appearing in your application's logs.
+
 
 
 [[boot-features-logging-format]]
@@ -1913,6 +1935,25 @@ Spring Boot includes the following pre-defined logging groups that can be used o
 
 
 
+[[boot-features-log-shutdown-hook]]
+=== Using a Log Shutdown Hook
+In order to release logging resources it is usually a good idea to stop the logging system when your application terminates.
+Unfortunately, there's no single way to do this that will work with all application types.
+If your application has complex context hierarchies or is deployed as a war file, you'll need to investigate the options provided directly by the underlying logging system.
+For example, Logback offers http://logback.qos.ch/manual/loggingSeparation.html[context selectors] which allow each Logger to be created in its own context.
+
+For simple "single jar" applications deployed in their own JVM, you can use the `logging.register-shutdown-hook` property.
+Setting `logging.register-shutdown-hook` to `true` will register a shutdown hook that will trigger log system cleanup when the JVM exits.
+
+You can set the property in your `application.properties` or `application.yaml` file:
+
+[source,properties,indent=0,configprops]
+----
+	logging.register-shutdown-hook=true
+----
+
+
+
 [[boot-features-custom-log-configuration]]
 === Custom Log Configuration
 The various logging systems can be activated by including the appropriate libraries on the classpath and can be further customized by providing a suitable configuration file in the root of the classpath or in a location specified by the following Spring `Environment` property: configprop:logging.config[].
@@ -2058,6 +2099,7 @@ If you attempt to do so, making changes to the configuration file results in an 
 
 
 
+[[boot-features-logback-extensions-profile-specific]]
 ==== Profile-specific Configuration
 The `<springProfile>` tag lets you optionally include or exclude sections of configuration based on the active Spring profiles.
 Profile sections are supported anywhere within the `<configuration>` element.
@@ -2084,6 +2126,7 @@ The following listing shows three sample profiles:
 
 
 
+[[boot-features-logback-environment-properties]]
 ==== Environment Properties
 The `<springProperty>` tag lets you expose properties from the Spring `Environment` for use within Logback.
 Doing so can be useful if you want to access values from your `application.properties` file in your Logback configuration.
@@ -2237,6 +2280,16 @@ If you want to provide custom instances of `RequestMappingHandlerMapping`, `Requ
 
 If you want to take complete control of Spring MVC, you can add your own `@Configuration` annotated with `@EnableWebMvc`, or alternatively add your own `@Configuration`-annotated `DelegatingWebMvcConfiguration` as described in the Javadoc of `@EnableWebMvc`.
 
+[NOTE]
+====
+Spring MVC uses a different `ConversionService` to the one used to convert values from your `application.properties` or `application.yaml` file.
+The means that `Period`, `Duration` and `DataSize` converters are not available and that `@DurationUnit` and `@DataSizeUnit` annotations will be ignored.
+
+If you want to customize the `ConversionService` used by Spring MVC, you can provide a `WebMvcConfigurer` bean with an `addFormatters` method.
+From this method you can register any converter that you like, or you can delegate to the static methods available on `ApplicationConversionService`.
+====
+
+
 
 [[boot-features-spring-mvc-message-converters]]
 ==== HttpMessageConverters
@@ -2383,6 +2436,8 @@ See {spring-boot-autoconfigure-module-code}/web/ResourceProperties.java[`Resourc
 This feature has been thoroughly described in a dedicated https://spring.io/blog/2014/07/24/spring-framework-4-1-handling-static-web-resources[blog post] and in Spring Framework's {spring-framework-docs}/web.html#mvc-config-static-resources[reference documentation].
 ====
 
+
+
 [[boot-features-spring-mvc-welcome-page]]
 ==== Welcome Page
 Spring Boot supports both static and templated welcome pages.
@@ -2481,6 +2536,10 @@ If you have this problem, you can reorder the classpath in the IDE to place the 
 By default, Spring Boot provides an `/error` mapping that handles all errors in a sensible way, and it is registered as a "`global`" error page in the servlet container.
 For machine clients, it produces a JSON response with details of the error, the HTTP status, and the exception message.
 For browser clients, there is a "`whitelabel`" error view that renders the same data in HTML format (to customize it, add a `View` that resolves to `error`).
+
+There are a number of `server.error` properties that can be set if you want to customize the default error handling behavior.
+See the <<appendix-application-properties.adoc#common-application-properties-server, "`Server Properties`">> section of the Appendix.
+
 To replace the default behavior completely, you can implement `ErrorController` and register a bean definition of that type or add a bean of type `ErrorAttributes` to use the existing mechanism but replace the contents.
 
 TIP: The `BasicErrorController` can be used as a base class for a custom `ErrorController`.
@@ -2628,7 +2687,6 @@ You should disable this behavior by setting `com.ibm.ws.webcontainer.invokeFlush
 
 If you are using Spring Security and want to access the principal in an error page, you must configure Spring Security's filter to be invoked on error dispatches.
 To do so, set the `spring.security.filter.dispatcher-types` property to `async, error, forward, request`.
-
 
 
 
@@ -2817,6 +2875,7 @@ In addition to the "`standard`" static resource locations listed earlier, a spec
 Any resources with a path in `+/webjars/**+` are served from jar files if they are packaged in the Webjars format.
 
 TIP: Spring WebFlux applications do not strictly depend on the Servlet API, so they cannot be deployed as war files and do not use the `src/main/webapp` directory.
+
 
 
 [[boot-features-webflux-welcome-page]]
@@ -3109,29 +3168,25 @@ The following example shows programmatically setting the port:
 	}
 ----
 
-NOTE: `TomcatServletWebServerFactory`, `JettyServletWebServerFactory` and `UndertowServletWebServerFactory` are dedicated variants of `ConfigurableServletWebServerFactory` that have additional customization setter methods for Tomcat, Jetty and Undertow respectively.
+`TomcatServletWebServerFactory`, `JettyServletWebServerFactory` and `UndertowServletWebServerFactory` are dedicated variants of `ConfigurableServletWebServerFactory` that have additional customization setter methods for Tomcat, Jetty and Undertow respectively.
+The following example shows how to customize `TomcatServletWebServerFactory` that provides access to Tomcat-specific configuration options:
+
+[source,java,indent=0,subs="verbatim,quotes,attributes"]
+----
+include::{code-examples}/context/embedded/TomcatServerCustomizerExample.java[tag=configuration]
+----
 
 
 
 [[boot-features-customizing-configurableservletwebserverfactory-directly]]
 ===== Customizing ConfigurableServletWebServerFactory Directly
-If the preceding customization techniques are too limited, you can register the `TomcatServletWebServerFactory`, `JettyServletWebServerFactory`, or `UndertowServletWebServerFactory` bean yourself.
-
-[source,java,indent=0]
-----
-	@Bean
-	public ConfigurableServletWebServerFactory webServerFactory() {
-		TomcatServletWebServerFactory factory = new TomcatServletWebServerFactory();
-		factory.setPort(9000);
-		factory.setSessionTimeout(10, TimeUnit.MINUTES);
-		factory.addErrorPages(new ErrorPage(HttpStatus.NOT_FOUND, "/notfound.html"));
-		return factory;
-	}
-----
+For more advanced use cases that require you to extend from `ServletWebServerFactory`, you can expose a bean of such type yourself.
 
 Setters are provided for many configuration options.
 Several protected method "`hooks`" are also provided should you need to do something more exotic.
 See the {spring-boot-module-api}/web/servlet/server/ConfigurableServletWebServerFactory.html[source code documentation] for details.
+
+NOTE: Auto-configured customizers are still applied on your custom factory, so use that option carefully.
 
 
 
@@ -3213,6 +3268,7 @@ The `spring-messaging` module of the Spring Framework provides support for RSock
 See the {spring-framework-docs}/web-reactive.html#rsocket-spring[RSocket section] of the Spring Framework reference for more details, including an overview of the RSocket protocol.
 
 
+
 [[boot-features-rsocket-strategies-auto-configuration]]
 === RSocket Strategies Auto-configuration
 Spring Boot auto-configures an `RSocketStrategies` bean that provides all the required infrastructure for encoding and decoding RSocket payloads.
@@ -3226,6 +3282,7 @@ Check out the <<boot-features-json-jackson,Jackson support section>> to know mor
 
 Developers can customize the `RSocketStrategies` component by creating beans that implement the `RSocketStrategiesCustomizer` interface.
 Note that their `@Order` is important, as it determines the order of codecs.
+
 
 
 [[boot-features-rsocket-server-auto-configuration]]
@@ -3444,6 +3501,10 @@ public class OAuth2LoginSecurityConfig extends WebSecurityConfigurerAdapter {
 }
 ----
 
+TIP: Spring Boot auto-configures an `InMemoryOAuth2AuthorizedClientService` which is used by Spring Security for the management of client registrations.
+The `InMemoryOAuth2AuthorizedClientService` has limited capabilities and we recommend using it only for development environments.
+For production environments, consider using a `JdbcOAuth2AuthorizedClientService` or creating your own implementation of `OAuth2AuthorizedClientService`.
+
 
 
 [[boot-features-security-oauth2-common-providers]]
@@ -3504,10 +3565,12 @@ Alternatively, you can define your own `OpaqueTokenIntrospector` bean for servle
 
 
 
+[[boot-features-security-authorization-server]]
 ==== Authorization Server
 Currently, Spring Security does not provide support for implementing an OAuth 2.0 Authorization Server.
 However, this functionality is available from the {spring-security-oauth2}[Spring Security OAuth] project, which will eventually be superseded by Spring Security completely.
 Until then, you can use the `spring-security-oauth2-autoconfigure` module to easily set up an OAuth 2.0 authorization server; see its https://docs.spring.io/spring-security-oauth2-boot/[documentation] for instructions.
+
 
 
 [[boot-features-security-saml]]
@@ -3839,6 +3902,14 @@ To enable deferred or lazy bootstrapping, set the configprop:spring.data.jpa.rep
 When using deferred or lazy bootstrapping, the auto-configured `EntityManagerFactoryBuilder` will use the context's `AsyncTaskExecutor`, if any, as the bootstrap executor.
 If more than one exists, the one named `applicationTaskExecutor` will be used.
 
+[NOTE]
+====
+When using deferred or lazy bootstraping, make sure to defer any access to the JPA infrastructure after the application context bootstrap phase.
+You can use `SmartInitializingSingleton` to invoke any initialization that requires the JPA infrastructure.
+For JPA components (such as converters) that are created as Spring beans, use `ObjectProvider` to delay the resolution of dependencies, if any.
+====
+
+
 TIP: We have barely scratched the surface of Spring Data JPA.
 For complete details, see the {spring-data-jdbc-docs}[Spring Data JPA reference documentation].
 
@@ -3920,6 +3991,7 @@ Both the commercial and open source editions can be used with Spring Boot.
 
 
 
+[[boot-features-jooq-codegen]]
 ==== Code Generation
 In order to use jOOQ type-safe queries, you need to generate Java classes from your database schema.
 You can follow the instructions in the {jooq-docs}/#jooq-in-7-steps-step3[jOOQ user manual].
@@ -3956,6 +4028,7 @@ The following listing shows an example:
 
 
 
+[[boot-features-jooq-dslcontext]]
 ==== Using DSLContext
 The fluent API offered by jOOQ is initiated through the `org.jooq.DSLContext` interface.
 Spring Boot auto-configures a `DSLContext` as a Spring Bean and connects it to your application `DataSource`.
@@ -3991,6 +4064,7 @@ You can then use the `DSLContext` to construct your queries, as shown in the fol
 
 
 
+[[boot-features-jooq-sqldialect]]
 ==== jOOQ SQL Dialect
 Unless the configprop:spring.jooq.sql-dialect[] property has been configured, Spring Boot determines the SQL dialect to use for your datasource.
 If Spring Boot could not detect the dialect, it uses `DEFAULT`.
@@ -3999,6 +4073,7 @@ NOTE: Spring Boot can only auto-configure dialects supported by the open source 
 
 
 
+[[boot-features-jooq-customizing]]
 ==== Customizing jOOQ
 More advanced customizations can be achieved by defining your own `@Bean` definitions, which is used when the jOOQ `Configuration` is created.
 You can define beans for the following jOOQ Types:
@@ -4486,6 +4561,8 @@ https://lucene.apache.org/solr/[Apache Solr] is a search engine.
 Spring Boot offers basic auto-configuration for the Solr 5 client library and the abstractions on top of it provided by https://github.com/spring-projects/spring-data-solr[Spring Data Solr].
 There is a `spring-boot-starter-data-solr` "`Starter`" for collecting the dependencies in a convenient way.
 
+NOTE: As of Spring Boot 2.3, support for Spring Data Solr has been deprecated and will be removed in a future release.
+
 
 
 [[boot-features-connecting-to-solr]]
@@ -4540,6 +4617,7 @@ Spring Boot supports several clients:
 Spring Boot provides a dedicated "`Starter`", `spring-boot-starter-data-elasticsearch`.
 
 
+
 [[boot-features-connecting-to-elasticsearch-rest]]
 ==== Connecting to Elasticsearch using REST clients
 Elasticsearch ships https://www.elastic.co/guide/en/elasticsearch/client/java-rest/current/index.html[two different REST clients] that you can use to query a cluster: the "Low Level" client and the "High Level" client.
@@ -4559,6 +4637,7 @@ You can also register an arbitrary number of beans that implement `RestClientBui
 To take full control over the registration, define a `RestClientBuilder` bean.
 
 If you have the `org.elasticsearch.client:elasticsearch-rest-high-level-client` dependency on the classpath, Spring Boot will auto-configure a `RestHighLevelClient`, which leverages any existing `RestClientBuilder` bean, reusing its HTTP configuration.
+
 
 
 [[boot-features-connecting-to-elasticsearch-reactive-rest]]
@@ -4581,6 +4660,8 @@ You can further tune how it is configured, as shown in the following example:
 
 If the configuration properties are not enough and you'd like to fully control the client
 configuration, you can register a custom `ClientConfiguration` bean.
+
+
 
 [[boot-features-connecting-to-elasticsearch-spring-data]]
 ==== Connecting to Elasticsearch by Using Spring Data
@@ -4633,6 +4714,7 @@ You can choose to disable the repositories support with the following property:
 ----
     spring.data.elasticsearch.repositories.enabled=false
 ----
+
 
 
 [[boot-features-cassandra]]
@@ -5147,7 +5229,6 @@ include::{code-examples}/cache/RedisCacheManagerCustomizationExample.java[tag=co
 
 
 
-
 [[boot-features-caching-provider-caffeine]]
 ==== Caffeine
 https://github.com/ben-manes/caffeine[Caffeine] is a Java 8 rewrite of Guava's cache that supersedes support for Guava.
@@ -5260,16 +5341,16 @@ By default, ActiveMQ creates a destination if it does not yet exist so that dest
 
 
 [[boot-features-artemis]]
-==== Artemis Support
-Spring Boot can auto-configure a `ConnectionFactory` when it detects that https://activemq.apache.org/components/artemis/[Artemis] is available on the classpath.
+==== ActiveMQ Artemis Support
+Spring Boot can auto-configure a `ConnectionFactory` when it detects that https://activemq.apache.org/components/artemis/[ActiveMQ Artemis] is available on the classpath.
 If the broker is present, an embedded broker is automatically started and configured (unless the mode property has been explicitly set).
 The supported modes are `embedded` (to make explicit that an embedded broker is required and that an error should occur if the broker is not available on the classpath) and `native` (to connect to a broker using the `netty` transport protocol).
 When the latter is configured, Spring Boot configures a `ConnectionFactory` that connects to a broker running on the local machine with the default settings.
 
-NOTE: If you use `spring-boot-starter-artemis`, the necessary dependencies to connect to an existing Artemis instance are provided, as well as the Spring infrastructure to integrate with JMS.
+NOTE: If you use `spring-boot-starter-artemis`, the necessary dependencies to connect to an existing ActiveMQ Artemis instance are provided, as well as the Spring infrastructure to integrate with JMS.
 Adding `org.apache.activemq:artemis-jms-server` to your application lets you use embedded mode.
 
-Artemis configuration is controlled by external configuration properties in `+spring.artemis.*+`.
+ActiveMQ Artemis configuration is controlled by external configuration properties in `+spring.artemis.*+`.
 For example, you might declare the following section in `application.properties`:
 
 [source,properties,indent=0,configprops]
@@ -6245,9 +6326,10 @@ For instance, it is possible to customize the name of the table for the JDBC sto
 For setting the timeout of the session you can use the configprop:spring.session.timeout[] property.
 If that property is not set, the auto-configuration falls back to the value of configprop:server.servlet.session.timeout[].
 
-You can take control over Spring Session's configuration using `@Enable*HttpSession` (Servlet) or `@Enable@WebSession` (Reactive).
+You can take control over Spring Session's configuration using `@Enable*HttpSession` (Servlet) or `@Enable*WebSession` (Reactive).
 This will cause the auto-configuration to back off.
 Spring Session can then be configured using the annotation's attributes rather than the previously described configuration properties.
+
 
 
 [[boot-features-jmx]]
@@ -6431,7 +6513,6 @@ See {spring-boot-module-api}/context/TypeExcludeFilter.html[the Javadoc] for det
 
 
 
-
 [[boot-features-testing-spring-boot-application-arguments]]
 ==== Using Application Arguments
 If your application expects <<boot-features-application-arguments,arguments>>, you can
@@ -6532,11 +6613,11 @@ Mock beans are automatically reset after each test method.
 [NOTE]
 ====
 If your test uses one of Spring Boot's test annotations (such as `@SpringBootTest`), this feature is automatically enabled.
-To use this feature with a different arrangement, a listener must be explicitly added, as shown in the following example:
+To use this feature with a different arrangement, listeners must be explicitly added, as shown in the following example:
 
 [source,java,indent=0]
 ----
-	@TestExecutionListeners(MockitoTestExecutionListener.class)
+	@TestExecutionListeners({ MockitoTestExecutionListener.class, ResetMocksTestExecutionListener.class })
 ----
 
 ====
@@ -6855,6 +6936,9 @@ TIP: Sometimes writing Spring WebFlux tests is not enough; Spring Boot can help 
 You can use the `@DataJpaTest` annotation to test JPA applications.
 By default, it scans for `@Entity` classes and configures Spring Data JPA repositories.
 If an embedded database is available on the classpath, it configures one as well.
+SQL queries are logged by default by setting the `spring.jpa.show-sql` property to `true`.
+This can be disabled using the `showSql()` attribute of the annotation.
+
 Regular `@Component` and `@ConfigurationProperties` beans are not scanned when the `@DataJpaTest` annotation is used.
 `@EnableConfigurationProperties` can be used to include `@ConfigurationProperties` beans.
 
@@ -7467,7 +7551,7 @@ Alternatively, you can specify a source for your test, which disables the behavi
 If you wish to use Spock to test a Spring Boot application, you should add a dependency on Spock's `spock-spring` module to your application's build.
 `spock-spring` integrates Spring's test framework into Spock.
 It is recommended that you use Spock 1.2 or later to benefit from a number of improvements to Spock's Spring Framework and Spring Boot integration.
-See http://spockframework.org/spock/docs/1.2/modules.html#_spring_module[the documentation for Spock's Spring module] for further details.
+See https://spockframework.org/spock/docs/1.2/modules.html#_spring_module[the documentation for Spock's Spring module] for further details.
 
 
 
@@ -7860,11 +7944,13 @@ The following example shows how to use the `ConditionEvaluationReportLoggingList
 
 
 
+[[boot-features-test-autoconfig-simulating-web-context]]
 ==== Simulating a Web Context
 If you need to test an auto-configuration that only operates in a Servlet or Reactive web application context, use the `WebApplicationContextRunner` or `ReactiveWebApplicationContextRunner` respectively.
 
 
 
+[[boot-features-test-autoconfig-overriding-classpath]]
 ==== Overriding the Classpath
 It is also possible to test what happens when a particular class and/or package is not present at runtime.
 Spring Boot ships with a `FilteredClassLoader` that can easily be used by the runner.
@@ -8143,6 +8229,7 @@ The version can be customized via the `kotlin-coroutines.version` property.
 TIP: `org.jetbrains.kotlinx:kotlinx-coroutines-reactor` dependency is provided by default if one bootstraps a Kotlin project with at least one reactive dependency on https://start.spring.io/#!language=kotlin[start.spring.io].
 
 
+
 [[boot-features-kotlin-configuration-properties]]
 === @ConfigurationProperties
 `@ConfigurationProperties` when used in combination with <<boot-features-external-config-constructor-binding,`@ConstructorBinding`>> supports classes with immutable `val` properties as shown in the following example:
@@ -8216,14 +8303,8 @@ If you need the `Mockk` equivalent of the Mockito specific <<boot-features-testi
 
 
 [[boot-features-container-images]]
-== Building Container Images
-Spring Boot applications can be containerized either by <<boot-features-container-images-docker,packaging them into Docker images>>, or by <<boot-features-container-images-buildpacks,using Buildpacks to create docker compatible container images that you can run anywhere>>.
-
-
-
-[[boot-features-container-images-docker]]
-=== Building Docker images
-A typical Spring Boot fat jar can be converted into a Docker image by adding just a few lines to a Dockerfile that can be used to build the image.
+== Container Images
+It is easily possible to package a Spring Boot fat jar as a docker image.
 However, there are various downsides to copying and running the fat jar as is in the docker image.
 There’s always a certain amount of overhead when running a fat jar without unpacking it, and in a containerized environment this can be noticeable.
 The other issue is that putting your application's code and all its dependencies in one layer in the Docker image is sub-optimal.
@@ -8232,8 +8313,9 @@ If you put jar files in the layer before your application classes, Docker often 
 
 
 
-==== Layering Docker Images
-To make it easier to create optimized Docker images that can be built with a dockerfile, Spring Boot supports adding a layer index file to the jar.
+[[boot-layering-docker-images]]
+=== Layering Docker Images
+To make it easier to create optimized Docker images, Spring Boot supports adding a layer index file to the jar.
 It provides a list of layers and the parts of the jar that should be contained within them.
 The list of layers in the index is ordered based on the order in which the layers should be added to the Docker/OCI image.
 Out-of-the-box, the following layers are supported:
@@ -8269,7 +8351,15 @@ For Gradle, refer to the {spring-boot-gradle-plugin-docs}#packaging-layered-jars
 
 
 
-==== Writing the Dockerfile
+[[boot-features-container-images-building]]
+=== Building Container Images
+Spring Boot applications can be containerized <<boot-features-container-images-docker,using Dockerfiles>>, or by <<boot-features-container-images-buildpacks,using Cloud Native Buildpacks to create docker compatible container images that you can run anywhere>>.
+
+
+
+[[boot-features-container-images-docker]]
+==== Dockerfiles
+While it is possible to convert a Spring Boot fat jar into a docker image with just a few lines in the Dockerfile, we will use the <<boot-layering-docker-images,layering feature>> to create an optimized docker image.
 When you create a jar containing the layers index file, the `spring-boot-jarmode-layertools` jar will be added as a dependency to your jar.
 With this jar on the classpath, you can launch your application in a special mode which allows the bootstrap code to run something entirely different from your application, for example, something that extracts the layers.
 
@@ -8331,8 +8421,9 @@ Of course, a Dockerfile can be written without using the jarmode.
 You can use some combination of `unzip` and `mv` to move things to the right layer but jarmode simplifies that.
 
 
+
 [[boot-features-container-images-buildpacks]]
-=== Buildpacks
+==== Cloud Native Buildpacks
 Dockerfiles are just one way to build docker images.
 Another way to build docker images is directly from your Maven or Gradle plugin, using buildpacks.
 If you’ve ever used an application platform such as Cloud Foundry or Heroku then you’ve probably used a buildpack.
@@ -8344,6 +8435,8 @@ Spring Boot includes buildpack support directly for both Maven and Gradle.
 This means you can just type a single command and quickly get a sensible image into your locally running Docker daemon.
 
 Refer to the individual plugin documentation on how to use buildpacks with {spring-boot-maven-plugin-docs}#build-image[Maven] and {spring-boot-gradle-plugin-docs}#build-image[Gradle].
+
+NOTE: The https://github.com/paketo-buildpacks/spring-boot[Paketo Spring Boot buildpack] has also been updated to support the `layers.idx` file so any customization that is applied to it will be reflected in the image created by the buildpack.
 
 
 

@@ -113,7 +113,7 @@ class AsciidoctorConventions {
 	private UnzipDocumentationResources createUnzipDocumentationResourcesTask(Project project) {
 		Configuration documentationResources = project.getConfigurations().maybeCreate("documentationResources");
 		documentationResources.getDependencies()
-				.add(project.getDependencies().create("io.spring.docresources:spring-doc-resources:0.2.4"));
+				.add(project.getDependencies().create("io.spring.docresources:spring-doc-resources:0.2.5"));
 		UnzipDocumentationResources unzipResources = project.getTasks().create("unzipDocumentationResources",
 				UnzipDocumentationResources.class);
 		unzipResources.setResources(documentationResources);
@@ -128,6 +128,7 @@ class AsciidoctorConventions {
 		syncDocumentationSource.setDestinationDir(syncedSource);
 		syncDocumentationSource.from("src/docs/");
 		asciidoctorTask.dependsOn(syncDocumentationSource);
+		asciidoctorTask.getInputs().dir(syncedSource);
 		asciidoctorTask.setSourceDir(project.relativePath(new File(syncedSource, "asciidoc/")));
 		return syncDocumentationSource;
 	}

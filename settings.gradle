@@ -22,7 +22,7 @@ pluginManagement {
 }
 
 plugins {
-	id "com.gradle.enterprise" version "3.5"
+	id "com.gradle.enterprise" version "3.6.1"
 	id "io.spring.ge.conventions" version "0.0.7"
 }
 
@@ -71,6 +71,7 @@ include "spring-boot-project:spring-boot-test-autoconfigure"
 include "spring-boot-tests:spring-boot-deployment-tests"
 include "spring-boot-tests:spring-boot-integration-tests:spring-boot-configuration-processor-tests"
 include "spring-boot-tests:spring-boot-integration-tests:spring-boot-launch-script-tests"
+include "spring-boot-tests:spring-boot-integration-tests:spring-boot-loader-tests"
 include "spring-boot-tests:spring-boot-integration-tests:spring-boot-server-tests"
 
 file("${rootDir}/spring-boot-project/spring-boot-starters").eachDirMatch(~/spring-boot-starter.*/) {

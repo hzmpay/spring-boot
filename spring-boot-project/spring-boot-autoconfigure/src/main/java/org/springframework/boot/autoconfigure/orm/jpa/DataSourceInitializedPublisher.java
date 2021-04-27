@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2021 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceSchemaCreatedEvent;
 import org.springframework.boot.jdbc.EmbeddedDatabaseConnection;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.ImportBeanDefinitionRegistrar;
 import org.springframework.context.event.ContextRefreshedEvent;
@@ -128,7 +129,8 @@ class DataSourceInitializedPublisher implements BeanPostProcessor {
 				: "none");
 		Map<String, Object> hibernate = this.hibernateProperties.determineHibernateProperties(
 				this.jpaProperties.getProperties(), new HibernateSettings().ddlAuto(defaultDdlAuto));
-		return hibernate.containsKey("hibernate.hbm2ddl.auto");
+		return hibernate.containsKey("hibernate.hbm2ddl.auto") || !hibernate
+				.getOrDefault("javax.persistence.schema-generation.database.action", "none").equals("none");
 	}
 
 	/**
@@ -136,12 +138,17 @@ class DataSourceInitializedPublisher implements BeanPostProcessor {
 	 * blocks until any asynchronous DataSource initialization has completed.
 	 */
 	static class DataSourceInitializationCompletionListener
-			implements ApplicationListener<ContextRefreshedEvent>, Ordered {
+			implements ApplicationListener<ContextRefreshedEvent>, Ordered, ApplicationContextAware {
+
+		private volatile ApplicationContext applicationContext;
 
 		private volatile Future<?> dataSourceInitialization;
 
 		@Override
 		public void onApplicationEvent(ContextRefreshedEvent event) {
+			if (!event.getApplicationContext().equals(this.applicationContext)) {
+				return;
+			}
 			Future<?> dataSourceInitialization = this.dataSourceInitialization;
 			if (dataSourceInitialization != null) {
 				try {
@@ -156,6 +163,11 @@ class DataSourceInitializedPublisher implements BeanPostProcessor {
 		@Override
 		public int getOrder() {
 			return Ordered.HIGHEST_PRECEDENCE;
+		}
+
+		@Override
+		public void setApplicationContext(ApplicationContext applicationContext) {
+			this.applicationContext = applicationContext;
 		}
 
 	}

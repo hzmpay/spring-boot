@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2021 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@
 
 package org.springframework.boot.web.reactive.server;
 
-import java.io.File;
 import java.io.FileInputStream;
+import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
@@ -113,6 +113,16 @@ public abstract class AbstractReactiveWebServerFactoryTests {
 				.flatMap((response) -> response.bodyToMono(String.class));
 		assertThat(result.block(Duration.ofSeconds(30))).isEqualTo("Hello World");
 		assertThat(this.webServer.getPort()).isEqualTo(specificPort);
+	}
+
+	@Test
+	void portIsMinusOneWhenConnectionIsClosed() {
+		AbstractReactiveWebServerFactory factory = getFactory();
+		this.webServer = factory.getWebServer(new EchoHandler());
+		this.webServer.start();
+		assertThat(this.webServer.getPort()).isGreaterThan(0);
+		this.webServer.stop();
+		assertThat(this.webServer.getPort()).isEqualTo(-1);
 	}
 
 	@Test
@@ -218,7 +228,9 @@ public abstract class AbstractReactiveWebServerFactoryTests {
 
 	protected ReactorClientHttpConnector buildTrustAllSslWithClientKeyConnector() throws Exception {
 		KeyStore clientKeyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-		clientKeyStore.load(new FileInputStream(new File("src/test/resources/test.jks")), "secret".toCharArray());
+		try (InputStream stream = new FileInputStream("src/test/resources/test.jks")) {
+			clientKeyStore.load(stream, "secret".toCharArray());
+		}
 		KeyManagerFactory clientKeyManagerFactory = KeyManagerFactory
 				.getInstance(KeyManagerFactory.getDefaultAlgorithm());
 		clientKeyManagerFactory.init(clientKeyStore, "password".toCharArray());

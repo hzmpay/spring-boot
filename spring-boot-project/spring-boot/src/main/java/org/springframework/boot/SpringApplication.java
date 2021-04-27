@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2020 the original author or authors.
+ * Copyright 2012-2021 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -299,7 +299,6 @@ public class SpringApplication {
 		StopWatch stopWatch = new StopWatch();
 		stopWatch.start();
 		ConfigurableApplicationContext context = null;
-		Collection<SpringBootExceptionReporter> exceptionReporters = new ArrayList<>();
 		configureHeadlessProperty();
 		SpringApplicationRunListeners listeners = getRunListeners(args);
 		listeners.starting();
@@ -309,8 +308,6 @@ public class SpringApplication {
 			configureIgnoreBeanInfo(environment);
 			Banner printedBanner = printBanner(environment);
 			context = createApplicationContext();
-			exceptionReporters = getSpringFactoriesInstances(SpringBootExceptionReporter.class,
-					new Class[] { ConfigurableApplicationContext.class }, context);
 			prepareContext(context, environment, listeners, applicationArguments, printedBanner);
 			refreshContext(context);
 			afterRefresh(context, applicationArguments);
@@ -322,7 +319,7 @@ public class SpringApplication {
 			callRunners(context, applicationArguments);
 		}
 		catch (Throwable ex) {
-			handleRunFailure(context, ex, exceptionReporters, listeners);
+			handleRunFailure(context, ex, listeners);
 			throw new IllegalStateException(ex);
 		}
 
@@ -330,7 +327,7 @@ public class SpringApplication {
 			listeners.running(context);
 		}
 		catch (Throwable ex) {
-			handleRunFailure(context, ex, exceptionReporters, null);
+			handleRunFailure(context, ex, null);
 			throw new IllegalStateException(ex);
 		}
 		return context;
@@ -741,7 +738,7 @@ public class SpringApplication {
 	/**
 	 * Refresh the underlying {@link ApplicationContext}.
 	 * @param applicationContext the application context to refresh
-	 * @deprecated since 2.3.0 in favor of
+	 * @deprecated since 2.3.0 for removal in 2.5.0 in favor of
 	 * {@link #refresh(ConfigurableApplicationContext)}
 	 */
 	@Deprecated
@@ -800,7 +797,7 @@ public class SpringApplication {
 	}
 
 	private void handleRunFailure(ConfigurableApplicationContext context, Throwable exception,
-			Collection<SpringBootExceptionReporter> exceptionReporters, SpringApplicationRunListeners listeners) {
+			SpringApplicationRunListeners listeners) {
 		try {
 			try {
 				handleExitCode(context, exception);
@@ -809,7 +806,7 @@ public class SpringApplication {
 				}
 			}
 			finally {
-				reportFailure(exceptionReporters, exception);
+				reportFailure(context, exception);
 				if (context != null) {
 					context.close();
 				}
@@ -821,9 +818,9 @@ public class SpringApplication {
 		ReflectionUtils.rethrowRuntimeException(exception);
 	}
 
-	private void reportFailure(Collection<SpringBootExceptionReporter> exceptionReporters, Throwable failure) {
+	private void reportFailure(ApplicationContext context, Throwable failure) {
 		try {
-			for (SpringBootExceptionReporter reporter : exceptionReporters) {
+			for (SpringBootExceptionReporter reporter : getExceptionReporters(context)) {
 				if (reporter.reportException(failure)) {
 					registerLoggedException(failure);
 					return;
@@ -837,6 +834,19 @@ public class SpringApplication {
 			logger.error("Application run failed", failure);
 			registerLoggedException(failure);
 		}
+	}
+
+	private Collection<SpringBootExceptionReporter> getExceptionReporters(ApplicationContext context) {
+		try {
+			if (context != null) {
+				return getSpringFactoriesInstances(SpringBootExceptionReporter.class,
+						new Class[] { ConfigurableApplicationContext.class }, context);
+			}
+		}
+		catch (Throwable ex) {
+			// Continue
+		}
+		return Collections.emptyList();
 	}
 
 	/**
