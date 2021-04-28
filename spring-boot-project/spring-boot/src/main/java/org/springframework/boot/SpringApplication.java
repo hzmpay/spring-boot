@@ -16,23 +16,8 @@
 
 package org.springframework.boot;
 
-import java.lang.reflect.Constructor;
-import java.security.AccessControlException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.CachedIntrospectionResults;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -62,26 +47,16 @@ import org.springframework.core.GenericTypeResolver;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.convert.support.ConfigurableConversionService;
-import org.springframework.core.env.CommandLinePropertySource;
-import org.springframework.core.env.CompositePropertySource;
-import org.springframework.core.env.ConfigurableEnvironment;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.MapPropertySource;
-import org.springframework.core.env.MutablePropertySources;
-import org.springframework.core.env.PropertySource;
-import org.springframework.core.env.SimpleCommandLinePropertySource;
-import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.env.*;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.core.io.support.SpringFactoriesLoader;
-import org.springframework.util.Assert;
-import org.springframework.util.ClassUtils;
-import org.springframework.util.CollectionUtils;
-import org.springframework.util.ObjectUtils;
-import org.springframework.util.ReflectionUtils;
-import org.springframework.util.StopWatch;
-import org.springframework.util.StringUtils;
+import org.springframework.util.*;
 import org.springframework.web.context.support.StandardServletEnvironment;
+
+import java.lang.reflect.Constructor;
+import java.security.AccessControlException;
+import java.util.*;
 
 /**
  * Class that can be used to bootstrap and launch a Spring application from a Java main
@@ -268,12 +243,22 @@ public class SpringApplication {
 		this.resourceLoader = resourceLoader;
 		Assert.notNull(primarySources, "PrimarySources must not be null");
 		this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
+		// 从classpath中寻找当前Application的web类型
 		this.webApplicationType = WebApplicationType.deduceFromClasspath();
+		// 寻找SPI中的实现并实例化返回
 		setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class));
 		setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+		// 寻找main方法所在的类
 		this.mainApplicationClass = deduceMainApplicationClass();
 	}
 
+	/**
+	 * 根据当前调用栈信息寻找到main方法所在的类并进行实例化
+	 *
+	 * @param
+	 * @return java.lang.Class<?>
+	 * @author Hezeming
+	 */
 	private Class<?> deduceMainApplicationClass() {
 		try {
 			StackTraceElement[] stackTrace = new RuntimeException().getStackTrace();
@@ -296,26 +281,43 @@ public class SpringApplication {
 	 * @return a running {@link ApplicationContext}
 	 */
 	public ConfigurableApplicationContext run(String... args) {
+		// 1.创建计时器类，记录执行时间
 		StopWatch stopWatch = new StopWatch();
 		stopWatch.start();
+		// 2.初始化上下文引用
 		ConfigurableApplicationContext context = null;
+		// 3.设置系统属性 `java.awt.headless` 的值，默认值为：true
 		configureHeadlessProperty();
+		// 4.创建监听器容器，并将SPI扫描到的监听器加入，并启动（内部只有一个发布应用启动事件的）
 		SpringApplicationRunListeners listeners = getRunListeners(args);
+		// 5.发布context正在启动中事件
 		listeners.starting();
 		try {
+			// 6.初始化应用参数类
 			ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
+			// 7.准备Spring环境
 			ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments);
+			//
 			configureIgnoreBeanInfo(environment);
+			// 8.打印Banner
 			Banner printedBanner = printBanner(environment);
+			// 9.创建Spring上下文实例
 			context = createApplicationContext();
+			// 10.对context进行参数填充及相关Springboot的数据设置
 			prepareContext(context, environment, listeners, applicationArguments, printedBanner);
+			// 11.refresh
 			refreshContext(context);
+			// 12.refresh之后的处理
 			afterRefresh(context, applicationArguments);
+			// 13.启动完成，计时器停止计时
 			stopWatch.stop();
 			if (this.logStartupInfo) {
+				// 输出启动日志信息
 				new StartupInfoLogger(this.mainApplicationClass).logStarted(getApplicationLog(), stopWatch);
 			}
+			// 14.发布context启动完成事件
 			listeners.started(context);
+			// 15.执行所有注册的runners
 			callRunners(context, applicationArguments);
 		}
 		catch (Throwable ex) {
@@ -324,6 +326,7 @@ public class SpringApplication {
 		}
 
 		try {
+			// 16.发布context就绪事件
 			listeners.running(context);
 		}
 		catch (Throwable ex) {
@@ -363,8 +366,11 @@ public class SpringApplication {
 	private void prepareContext(ConfigurableApplicationContext context, ConfigurableEnvironment environment,
 			SpringApplicationRunListeners listeners, ApplicationArguments applicationArguments, Banner printedBanner) {
 		context.setEnvironment(environment);
+		// 设置context的一些配置，子类可继承实现
 		postProcessApplicationContext(context);
+		// 对配置的Initializers进行执行
 		applyInitializers(context);
+		// 给springboot中的监听器设置context
 		listeners.contextPrepared(context);
 		if (this.logStartupInfo) {
 			logStartupInfo(context.getParent() == null);
@@ -409,17 +415,35 @@ public class SpringApplication {
 
 	private SpringApplicationRunListeners getRunListeners(String[] args) {
 		Class<?>[] types = new Class<?>[] { SpringApplication.class, String[].class };
+		// 根据SpringApplicationRunListener获取SPI拓展类构建
 		return new SpringApplicationRunListeners(logger,
 				getSpringFactoriesInstances(SpringApplicationRunListener.class, types, this, args));
 	}
 
+	/**
+	 * 根据类型寻找spring的SPI中的实现并实例化返回
+	 *
+	 * @param type
+	 * @return java.util.Collection<T>
+	 * @author Hezeming
+	 */
 	private <T> Collection<T> getSpringFactoriesInstances(Class<T> type) {
 		return getSpringFactoriesInstances(type, new Class<?>[] {});
 	}
 
+	/**
+	 * 根据类型寻找spring的SPI中的实现并实例化返回
+	 *
+	 * @param type
+	 * @param parameterTypes
+	 * @param args
+	 * @return java.util.Collection<T>
+	 * @author Hezeming
+	 */
 	private <T> Collection<T> getSpringFactoriesInstances(Class<T> type, Class<?>[] parameterTypes, Object... args) {
 		ClassLoader classLoader = getClassLoader();
 		// Use names and ensure unique to protect against duplicates
+		// 使用名称并确保唯一，以防止重复
 		Set<String> names = new LinkedHashSet<>(SpringFactoriesLoader.loadFactoryNames(type, classLoader));
 		List<T> instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names);
 		AnnotationAwareOrderComparator.sort(instances);
@@ -445,6 +469,13 @@ public class SpringApplication {
 		return instances;
 	}
 
+	/**
+	 * 获取当前环境，获取不到则进行创建
+	 *
+	 * @param
+	 * @return org.springframework.core.env.ConfigurableEnvironment
+	 * @author Hezeming
+	 */
 	private ConfigurableEnvironment getOrCreateEnvironment() {
 		if (this.environment != null) {
 			return this.environment;
@@ -524,6 +555,7 @@ public class SpringApplication {
 
 	private void configureIgnoreBeanInfo(ConfigurableEnvironment environment) {
 		if (System.getProperty(CachedIntrospectionResults.IGNORE_BEANINFO_PROPERTY_NAME) == null) {
+			// TODO 这里的"spring.beaninfo.ignore"应该替换成CachedIntrospectionResults.IGNORE_BEANINFO_PROPERTY_NAME
 			Boolean ignore = environment.getProperty("spring.beaninfo.ignore", Boolean.class, Boolean.TRUE);
 			System.setProperty(CachedIntrospectionResults.IGNORE_BEANINFO_PROPERTY_NAME, ignore.toString());
 		}
