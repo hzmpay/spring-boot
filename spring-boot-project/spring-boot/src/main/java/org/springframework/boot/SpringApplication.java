@@ -295,7 +295,7 @@ public class SpringApplication {
 		try {
 			// 6.初始化应用参数类
 			ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
-			// 7.准备Spring环境
+			// 7.准备Spring环境（根据springboot应用参数和监听器）
 			ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments);
 			//
 			configureIgnoreBeanInfo(environment);
@@ -307,7 +307,7 @@ public class SpringApplication {
 			prepareContext(context, environment, listeners, applicationArguments, printedBanner);
 			// 11.refresh
 			refreshContext(context);
-			// 12.refresh之后的处理
+			// 12.refresh之后的处理（默认空实现，给子类拓展）
 			afterRefresh(context, applicationArguments);
 			// 13.启动完成，计时器停止计时
 			stopWatch.stop();
@@ -339,12 +339,18 @@ public class SpringApplication {
 	private ConfigurableEnvironment prepareEnvironment(SpringApplicationRunListeners listeners,
 			ApplicationArguments applicationArguments) {
 		// Create and configure the environment
+		// 创建spring环境
 		ConfigurableEnvironment environment = getOrCreateEnvironment();
+		// 一些配置文件处理（看方法注释）
 		configureEnvironment(environment, applicationArguments.getSourceArgs());
+		// 处理configurationProperties类型的配置文件
 		ConfigurationPropertySources.attach(environment);
+		// 发布环境准备事件
 		listeners.environmentPrepared(environment);
+		// 环境绑定当前的SpringApplication
 		bindToSpringApplication(environment);
 		if (!this.isCustomEnvironment) {
+			// 如果不是定制化环境，将环境变更为可在Springboot和Spring的环境之间自由切换的类
 			environment = new EnvironmentConverter(getClassLoader()).convertEnvironmentIfNecessary(environment,
 					deduceEnvironmentClass());
 		}
@@ -378,6 +384,7 @@ public class SpringApplication {
 		}
 		// Add boot specific singleton beans
 		ConfigurableListableBeanFactory beanFactory = context.getBeanFactory();
+		// 将springApplicationArguments注册到Spring
 		beanFactory.registerSingleton("springApplicationArguments", applicationArguments);
 		if (printedBanner != null) {
 			beanFactory.registerSingleton("springBootBanner", printedBanner);
@@ -496,6 +503,13 @@ public class SpringApplication {
 	 * {@link #configureProfiles(ConfigurableEnvironment, String[])} in that order.
 	 * Override this method for complete control over Environment customization, or one of
 	 * the above for fine-grained control over property sources or profiles, respectively.
+	 * <br/>
+	 * 模板方法按照这个顺序委托到configurePropertySources(ConfigurableEnvironment, String[])和
+	 * configureProfiles(ConfigurableEnvironment, String[])。
+	 * 重写此方法以实现对Environment自定义的完全控制，
+	 * 或者重写上述方法之一以实现对属性源或概要文件的细粒度控制。<br/>
+	 * （默认主要处理：1.springboot自带的类型转换器；2.property配置文件资源；3.profiles环境隔离处理）
+	 *
 	 * @param environment this application's environment
 	 * @param args arguments passed to the {@code run} method
 	 * @see #configureProfiles(ConfigurableEnvironment, String[])

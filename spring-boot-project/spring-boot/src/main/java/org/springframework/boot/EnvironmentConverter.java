@@ -64,6 +64,9 @@ final class EnvironmentConverter {
 	 * Converts the given {@code environment} to the given {@link StandardEnvironment}
 	 * type. If the environment is already of the same type, no conversion is performed
 	 * and it is returned unchanged.
+	 * <p>
+	 * 将给定的环境转换为给定的StandardEnvironment类型。如果环境已经具有相同的类型，则不执行转换，并将其原形返回。
+	 *
 	 * @param environment the Environment to convert
 	 * @param type the type to convert the Environment to
 	 * @return the converted Environment

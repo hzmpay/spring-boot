@@ -16,17 +16,12 @@
 
 package org.springframework.boot.context.properties.source;
 
+import org.springframework.core.env.*;
+import org.springframework.core.env.PropertySource.StubPropertySource;
+import org.springframework.util.Assert;
+
 import java.util.Collections;
 import java.util.stream.Stream;
-
-import org.springframework.core.env.ConfigurableEnvironment;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.MutablePropertySources;
-import org.springframework.core.env.PropertySource;
-import org.springframework.core.env.PropertySource.StubPropertySource;
-import org.springframework.core.env.PropertySources;
-import org.springframework.core.env.PropertySourcesPropertyResolver;
-import org.springframework.util.Assert;
 
 /**
  * Provides access to {@link ConfigurationPropertySource ConfigurationPropertySources}.
@@ -64,6 +59,13 @@ public final class ConfigurationPropertySources {
 	 * <p>
 	 * The attached resolver will dynamically track any additions or removals from the
 	 * underlying {@link Environment} property sources.
+	 * <p>
+	 * 将configurationProperties支持附加到指定的环境。
+	 * 将环境管理的每个PropertySource调整为ConfigurationPropertySource，
+	 * 并允许经典的PropertySourcesPropertyResolver调用使用配置属性名解析。
+	 * <p>
+	 * 附加的解析器将动态跟踪从基础Environment属性源中添加或删除的任何内容。
+	 *
 	 * @param environment the source environment (must be an instance of
 	 * {@link ConfigurableEnvironment})
 	 * @see #get(Environment)
